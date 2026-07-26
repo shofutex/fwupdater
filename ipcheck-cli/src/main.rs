@@ -35,10 +35,24 @@ enum Command {
     /// List firewall groups on the Vultr account.
     Groups,
     /// List the rules inside a firewall group.
-    Rules { group_id: String },
+    Rules {
+        /// Firewall group ID (from `groups`). Omit if using --group-description.
+        group_id: Option<String>,
+        /// Look up the group by its description (from `groups`) instead of
+        /// its ID. Resolves to a group ID and pauses for confirmation
+        /// before listing its rules.
+        #[arg(long, conflicts_with = "group_id")]
+        group_description: Option<String>,
+    },
     /// Add rules for the given ports at this machine's current IP address(es).
     Add {
-        group_id: String,
+        /// Firewall group ID (from `groups`). Omit if using --group-description.
+        group_id: Option<String>,
+        /// Look up the group by its description (from `groups`) instead of
+        /// its ID. Resolves to a group ID and pauses for confirmation
+        /// before creating any rules.
+        #[arg(long, conflicts_with = "group_id")]
+        group_description: Option<String>,
         /// Comma-separated TCP ports to open.
         #[arg(long, value_delimiter = ',', default_values_t = DEFAULT_PORTS)]
         ports: Vec<u16>,
@@ -62,8 +76,20 @@ enum Command {
         yes: bool,
     },
     /// Remove one or more existing rules by ID (see `rules` for IDs).
+    ///
+    /// The group is selected with --group-id or --group-description (rather
+    /// than a positional GROUP_ID like `add`/`rules` use) since a positional
+    /// group ID here would be ambiguous with the trailing rule ID list.
     Remove {
-        group_id: String,
+        /// Firewall group ID (from `groups`). Omit if using --group-description.
+        #[arg(long, conflicts_with = "group_description")]
+        group_id: Option<String>,
+        /// Look up the group by its description (from `groups`) instead of
+        /// its ID. Resolves to a group ID and pauses for confirmation
+        /// before deleting any rules.
+        #[arg(long)]
+        group_description: Option<String>,
+        /// Rule IDs to delete (see `rules` for IDs); at least one is required.
         #[arg(required = true)]
         rule_ids: Vec<u64>,
         /// Only print the requests that would be sent; never contact Vultr.
@@ -81,23 +107,39 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Detect => cmd_detect(),
         Command::Groups => cmd_groups(&cli),
-        Command::Rules { group_id } => cmd_rules(&cli, group_id),
-        Command::Add { group_id, ports, note, ipv6_prefix_len, ipv4_only, ipv6_only, dry_run, yes } => {
-            cmd_add(
-                &cli,
-                group_id,
-                ports,
-                note,
-                *ipv6_prefix_len,
-                *ipv4_only,
-                *ipv6_only,
-                *dry_run,
-                *yes,
-            )
+        Command::Rules { group_id, group_description } => {
+            cmd_rules(&cli, group_id.as_deref(), group_description.as_deref())
         }
-        Command::Remove { group_id, rule_ids, dry_run, yes } => {
-            cmd_remove(&cli, group_id, rule_ids, *dry_run, *yes)
-        }
+        Command::Add {
+            group_id,
+            group_description,
+            ports,
+            note,
+            ipv6_prefix_len,
+            ipv4_only,
+            ipv6_only,
+            dry_run,
+            yes,
+        } => cmd_add(
+            &cli,
+            group_id.as_deref(),
+            group_description.as_deref(),
+            ports,
+            note,
+            *ipv6_prefix_len,
+            *ipv4_only,
+            *ipv6_only,
+            *dry_run,
+            *yes,
+        ),
+        Command::Remove { group_id, group_description, rule_ids, dry_run, yes } => cmd_remove(
+            &cli,
+            group_id.as_deref(),
+            group_description.as_deref(),
+            rule_ids,
+            *dry_run,
+            *yes,
+        ),
     }
 }
 
@@ -142,16 +184,18 @@ fn cmd_groups(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn cmd_rules(cli: &Cli, group_id: &str) -> Result<()> {
+fn cmd_rules(cli: &Cli, group_id: Option<&str>, group_description: Option<&str>) -> Result<()> {
     let client = client_for(cli)?;
-    let req = requests::list_firewall_rules(group_id);
+    let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
+
+    let req = requests::list_firewall_rules(&resolved_group_id);
     if !cli.silent {
         display::print_request(&req, &cli.base_url);
     }
 
-    let rules = client.list_firewall_rules(group_id)?;
+    let rules = client.list_firewall_rules(&resolved_group_id)?;
     if rules.is_empty() {
-        println!("No rules found in group {group_id}.");
+        println!("No rules found in group {resolved_group_id}.");
     }
     for r in &rules {
         display::print_rule(r);
@@ -159,10 +203,65 @@ fn cmd_rules(cli: &Cli, group_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolves the group to operate on: an explicit `group_id` is used as-is;
+/// otherwise `group_description` is looked up via [`resolve_group_id`].
+/// Exactly one of the two must be given (enforced by the CLI's
+/// `conflicts_with`), so the `(None, None)` case only happens when both were
+/// omitted entirely.
+fn resolve_group(
+    client: &VultrClient,
+    cli: &Cli,
+    group_id: Option<&str>,
+    group_description: Option<&str>,
+) -> Result<String> {
+    match (group_id, group_description) {
+        (Some(id), _) => Ok(id.to_string()),
+        (None, Some(desc)) => resolve_group_id(client, cli, desc),
+        (None, None) => bail!("a firewall group is required: pass a group ID or --group-description"),
+    }
+}
+
+/// Resolves a firewall group's description (as shown by `groups`) to its ID.
+/// Since a description isn't guaranteed unique or exact the way an ID is,
+/// this always pauses for explicit confirmation of the resolved id/description
+/// pair before handing the ID back to the caller.
+fn resolve_group_id(client: &VultrClient, cli: &Cli, group_description: &str) -> Result<String> {
+    let req = requests::list_firewall_groups();
+    if !cli.silent {
+        display::print_request(&req, &cli.base_url);
+    }
+
+    let groups = client.list_firewall_groups()?;
+    let matches: Vec<_> =
+        groups.iter().filter(|g| g.description.eq_ignore_ascii_case(group_description)).collect();
+
+    match matches.as_slice() {
+        [] => bail!(
+            "no firewall group found with description '{group_description}'; run `ipcheck groups` to see available descriptions"
+        ),
+        [group] => {
+            println!("Found group id={} description={}", group.id, group.description);
+            if display::confirm("Is this the group you meant?") {
+                Ok(group.id.clone())
+            } else {
+                bail!("aborted; group not confirmed")
+            }
+        }
+        multiple => {
+            println!("Multiple groups match description '{group_description}':");
+            for g in multiple {
+                display::print_group(g);
+            }
+            bail!("ambiguous description; re-run with an explicit GROUP_ID")
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_add(
     cli: &Cli,
-    group_id: &str,
+    group_id: Option<&str>,
+    group_description: Option<&str>,
     ports: &[u16],
     note: &str,
     ipv6_prefix_len: u8,
@@ -171,6 +270,9 @@ fn cmd_add(
     dry_run: bool,
     yes: bool,
 ) -> Result<()> {
+    let client = client_for(cli)?;
+    let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
+
     println!("Detecting public IP address(es)...");
     let mut ips = detect_all();
     if ipv4_only {
@@ -189,7 +291,7 @@ fn cmd_add(
     let planned_rules = plan_add_rules(&ips, &port_specs, note, ipv6_prefix_len);
     let api_requests: Vec<_> = planned_rules
         .iter()
-        .map(|rule| requests::create_firewall_rule(group_id, rule))
+        .map(|rule| requests::create_firewall_rule(&resolved_group_id, rule))
         .collect();
 
     println!("\n{} rule(s) would be created:\n", api_requests.len());
@@ -209,7 +311,6 @@ fn cmd_add(
         return Ok(());
     }
 
-    let client = client_for(cli)?;
     for req in &api_requests {
         match client.send::<FirewallRuleResponse>(req) {
             Ok(resp) => println!("Created rule id={}", resp.firewall_rule.id),
@@ -220,10 +321,20 @@ fn cmd_add(
     Ok(())
 }
 
-fn cmd_remove(cli: &Cli, group_id: &str, rule_ids: &[u64], dry_run: bool, yes: bool) -> Result<()> {
+fn cmd_remove(
+    cli: &Cli,
+    group_id: Option<&str>,
+    group_description: Option<&str>,
+    rule_ids: &[u64],
+    dry_run: bool,
+    yes: bool,
+) -> Result<()> {
+    let client = client_for(cli)?;
+    let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
+
     let api_requests: Vec<_> = rule_ids
         .iter()
-        .map(|id| requests::delete_firewall_rule(group_id, *id))
+        .map(|id| requests::delete_firewall_rule(&resolved_group_id, *id))
         .collect();
 
     println!("{} rule(s) would be deleted:\n", api_requests.len());
@@ -244,7 +355,6 @@ fn cmd_remove(cli: &Cli, group_id: &str, rule_ids: &[u64], dry_run: bool, yes: b
         return Ok(());
     }
 
-    let client = client_for(cli)?;
     for (id, req) in rule_ids.iter().zip(&api_requests) {
         match client.send_no_content(req) {
             Ok(()) => println!("Deleted rule id={id}"),
