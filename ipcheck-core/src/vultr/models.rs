@@ -49,8 +49,11 @@ pub struct FirewallGroup {
     pub description: String,
     pub date_created: String,
     pub date_modified: String,
+    #[serde(default)]
     pub instance_count: i64,
+    #[serde(default)]
     pub rule_count: i64,
+    #[serde(default)]
     pub max_rule_count: i64,
 }
 

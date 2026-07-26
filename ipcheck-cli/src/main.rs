@@ -2,14 +2,13 @@ mod display;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use ipcheck_core::planner::{plan_add_rules, PortSpec, DEFAULT_PORTS};
+use ipcheck_core::planner::{plan_add_rules, PortSpec, DEFAULT_IPV6_PREFIX_LEN, DEFAULT_PORTS};
 use ipcheck_core::vultr::{requests, FirewallRuleResponse, VultrClient};
 use ipcheck_core::{detect_all, DetectedIps};
 
-/// Test harness for validating the exact Vultr API calls the ipcheck app
-/// would make, before wiring them into the mobile UI. Every mutating command
-/// prints the request (and an equivalent curl command) and asks for
-/// confirmation before sending it.
+/// Command-line tool for communicating Vultr firewall API calls
+/// Every mutating command prints the request (and an equivalent 
+/// curl command) and asks for confirmation before sending it
 #[derive(Parser)]
 #[command(name = "ipcheck", version, about)]
 struct Cli {
@@ -20,6 +19,10 @@ struct Cli {
     /// Override the Vultr API base URL (e.g. to point at a local mock server).
     #[arg(long, default_value = VultrClient::DEFAULT_BASE_URL, global = true)]
     base_url: String,
+
+    /// Don't print the request (JSON body + equivalent curl) before sending it.
+    #[arg(short = 's', long, global = true)]
+    silent: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -42,6 +45,11 @@ enum Command {
         /// Note/label to attach to each created rule.
         #[arg(long)]
         note: String,
+        /// IPv6 network prefix length to open (rather than a single /128
+        /// host), since the host portion commonly rotates via privacy
+        /// extensions while the prefix stays stable.
+        #[arg(long, default_value_t = DEFAULT_IPV6_PREFIX_LEN)]
+        ipv6_prefix_len: u8,
         #[arg(long, conflicts_with = "ipv6_only")]
         ipv4_only: bool,
         #[arg(long, conflicts_with = "ipv4_only")]
@@ -74,8 +82,18 @@ fn main() -> Result<()> {
         Command::Detect => cmd_detect(),
         Command::Groups => cmd_groups(&cli),
         Command::Rules { group_id } => cmd_rules(&cli, group_id),
-        Command::Add { group_id, ports, note, ipv4_only, ipv6_only, dry_run, yes } => {
-            cmd_add(&cli, group_id, ports, note, *ipv4_only, *ipv6_only, *dry_run, *yes)
+        Command::Add { group_id, ports, note, ipv6_prefix_len, ipv4_only, ipv6_only, dry_run, yes } => {
+            cmd_add(
+                &cli,
+                group_id,
+                ports,
+                note,
+                *ipv6_prefix_len,
+                *ipv4_only,
+                *ipv6_only,
+                *dry_run,
+                *yes,
+            )
         }
         Command::Remove { group_id, rule_ids, dry_run, yes } => {
             cmd_remove(&cli, group_id, rule_ids, *dry_run, *yes)
@@ -110,7 +128,9 @@ fn cmd_detect() -> Result<()> {
 fn cmd_groups(cli: &Cli) -> Result<()> {
     let client = client_for(cli)?;
     let req = requests::list_firewall_groups();
-    display::print_request(&req, &cli.base_url);
+    if !cli.silent {
+        display::print_request(&req, &cli.base_url);
+    }
 
     let groups = client.list_firewall_groups()?;
     if groups.is_empty() {
@@ -125,7 +145,9 @@ fn cmd_groups(cli: &Cli) -> Result<()> {
 fn cmd_rules(cli: &Cli, group_id: &str) -> Result<()> {
     let client = client_for(cli)?;
     let req = requests::list_firewall_rules(group_id);
-    display::print_request(&req, &cli.base_url);
+    if !cli.silent {
+        display::print_request(&req, &cli.base_url);
+    }
 
     let rules = client.list_firewall_rules(group_id)?;
     if rules.is_empty() {
@@ -143,6 +165,7 @@ fn cmd_add(
     group_id: &str,
     ports: &[u16],
     note: &str,
+    ipv6_prefix_len: u8,
     ipv4_only: bool,
     ipv6_only: bool,
     dry_run: bool,
@@ -163,15 +186,17 @@ fn cmd_add(
     }
 
     let port_specs: Vec<PortSpec> = ports.iter().copied().map(PortSpec::tcp).collect();
-    let planned_rules = plan_add_rules(&ips, &port_specs, note);
+    let planned_rules = plan_add_rules(&ips, &port_specs, note, ipv6_prefix_len);
     let api_requests: Vec<_> = planned_rules
         .iter()
         .map(|rule| requests::create_firewall_rule(group_id, rule))
         .collect();
 
     println!("\n{} rule(s) would be created:\n", api_requests.len());
-    for req in &api_requests {
-        display::print_request(req, &cli.base_url);
+    if !cli.silent {
+        for req in &api_requests {
+            display::print_request(req, &cli.base_url);
+        }
     }
 
     if dry_run {
@@ -202,8 +227,10 @@ fn cmd_remove(cli: &Cli, group_id: &str, rule_ids: &[u64], dry_run: bool, yes: b
         .collect();
 
     println!("{} rule(s) would be deleted:\n", api_requests.len());
-    for req in &api_requests {
-        display::print_request(req, &cli.base_url);
+    if !cli.silent {
+        for req in &api_requests {
+            display::print_request(req, &cli.base_url);
+        }
     }
 
     if dry_run {
