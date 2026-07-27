@@ -1,19 +1,19 @@
-//! UniFFI bindings exposing `ipcheck-core` to Kotlin (Android) and Swift
+//! UniFFI bindings exposing `fwupdater-core` to Kotlin (Android) and Swift
 //! (iOS). Mirrors the CLI's workflow: detect IP -> pick a firewall group
 //! (via `list_groups`, backing a picker) -> list its rules -> plan/preview
 //! rules to add -> send them -> later, find and remove stale ones.
 //!
 //! Every method here is synchronous (it makes blocking HTTP calls under the
-//! hood, same as `ipcheck-core`/`ipcheck-cli`). Callers must invoke these
+//! hood, same as `fwupdater-core`/`fwupdater-cli`). Callers must invoke these
 //! off their main/UI thread (e.g. `Dispatchers.IO` in Kotlin, a detached
 //! `Task` in Swift), exactly as with any blocking network SDK call.
 
 use std::sync::Arc;
 
-use ipcheck_core::planner::{self, PortSpec};
-use ipcheck_core::vultr::models::{FirewallRule as CoreFirewallRule, FirewallRuleReq, IpType as CoreIpType, Protocol as CoreProtocol};
-use ipcheck_core::vultr::{FirewallGroup as CoreFirewallGroup, VultrClient};
-use ipcheck_core::DetectedIps as CoreDetectedIps;
+use fwupdater_core::planner::{self, PortSpec};
+use fwupdater_core::vultr::models::{FirewallRule as CoreFirewallRule, FirewallRuleReq, IpType as CoreIpType, Protocol as CoreProtocol};
+use fwupdater_core::vultr::{FirewallGroup as CoreFirewallGroup, VultrClient};
+use fwupdater_core::DetectedIps as CoreDetectedIps;
 
 uniffi::setup_scaffolding!();
 
@@ -254,13 +254,13 @@ pub enum MobileError {
     IpDetect(String),
 }
 
-impl From<ipcheck_core::Error> for MobileError {
-    fn from(e: ipcheck_core::Error) -> Self {
+impl From<fwupdater_core::Error> for MobileError {
+    fn from(e: fwupdater_core::Error) -> Self {
         match e {
-            ipcheck_core::Error::Http(err) => MobileError::Network(err.to_string()),
-            ipcheck_core::Error::Json(err) => MobileError::Network(err.to_string()),
-            ipcheck_core::Error::Api { status, message } => MobileError::Api { status, message },
-            ipcheck_core::Error::IpDetect(msg) => MobileError::IpDetect(msg),
+            fwupdater_core::Error::Http(err) => MobileError::Network(err.to_string()),
+            fwupdater_core::Error::Json(err) => MobileError::Network(err.to_string()),
+            fwupdater_core::Error::Api { status, message } => MobileError::Api { status, message },
+            fwupdater_core::Error::IpDetect(msg) => MobileError::IpDetect(msg),
         }
     }
 }
@@ -273,7 +273,7 @@ impl From<ipcheck_core::Error> for MobileError {
 /// the main thread.
 #[uniffi::export]
 pub fn detect_ips() -> DetectedIps {
-    ipcheck_core::detect_all().into()
+    fwupdater_core::detect_all().into()
 }
 
 /// Ports opened by default if the caller doesn't specify its own: 22, 80, 443.

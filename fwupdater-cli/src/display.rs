@@ -1,4 +1,4 @@
-use ipcheck_core::vultr::{ApiRequest, FirewallGroup, FirewallRule};
+use fwupdater_core::vultr::{ApiRequest, FirewallGroup, FirewallRule};
 
 /// Prints everything about a request that a human needs to visually verify
 /// it before it goes out: method, URL, JSON body, and an equivalent curl

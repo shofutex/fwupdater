@@ -1,10 +1,10 @@
 [package]
-name = "ipcheck-mobile"
+name = "fwupdater-mobile"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "ipcheck_mobile"
+name = "fwupdater_mobile"
 crate-type = ["cdylib", "staticlib", "lib"]
 
 [[bin]]
@@ -13,7 +13,7 @@ path = "src/bin/uniffi-bindgen.rs"
 required-features = ["uniffi/cli"]
 
 [dependencies]
-ipcheck-core = { path = "../ipcheck-core" }
+fwupdater-core = { path = "../fwupdater-core" }
 thiserror = "1"
 
 [dependencies.uniffi]

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cross-compiles ipcheck-mobile for Android and generates the Kotlin
+# Cross-compiles fwupdater-mobile for Android and generates the Kotlin
 # bindings alongside the .so files, ready to drop into an Android Studio
 # project's jniLibs/ directory.
 #
@@ -19,14 +19,14 @@ out_dir="${1:-${crate_dir}/dist/android}"
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must point at an installed Android NDK}"
 command -v cargo-ndk >/dev/null || { echo "cargo-ndk not found; run: cargo install cargo-ndk" >&2; exit 1; }
 
-echo "Building ipcheck_mobile for Android ABIs..."
+echo "Building fwupdater_mobile for Android ABIs..."
 cargo ndk \
     -t arm64-v8a -t armeabi-v7a -t x86_64 -t x86 \
     -o "${out_dir}/jniLibs" \
     build --release --manifest-path "${crate_dir}/Cargo.toml"
 
 echo "Generating Kotlin bindings..."
-lib="${out_dir}/jniLibs/arm64-v8a/libipcheck_mobile.so"
+lib="${out_dir}/jniLibs/arm64-v8a/libfwupdater_mobile.so"
 cargo run --manifest-path "${crate_dir}/Cargo.toml" --bin uniffi-bindgen --features uniffi/cli -- \
     generate --config "${crate_dir}/uniffi.toml" --library "$lib" --language kotlin \
     --out-dir "${out_dir}/kotlin"

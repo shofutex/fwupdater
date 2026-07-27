@@ -1,5 +1,5 @@
 // Reference usage of the generated Swift bindings (module name set by
-// ipcheck-mobile/uniffi.toml - "Ipcheck" below matches that config). Not
+// fwupdater-mobile/uniffi.toml - "Fwupdater" below matches that config). Not
 // part of the build; illustrates the workflow against the actual generated
 // API (verified by generating real bindings and reading their signatures,
 // not guessed).
@@ -8,7 +8,7 @@
 // from a detached Task or a background actor, never from the main actor.
 
 import Foundation
-import Ipcheck
+import Fwupdater
 
 final class FirewallUpdateWorkflow {
     // One client per workflow instance (e.g. per screen) - it holds the

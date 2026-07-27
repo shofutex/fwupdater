@@ -1,5 +1,5 @@
 // Reference usage of the generated Kotlin bindings (package name set by
-// ipcheck-mobile/uniffi.toml - rename it there to match your app, then this
+// fwupdater-mobile/uniffi.toml - rename it there to match your app, then this
 // import changes to match). Not part of the build; illustrates the workflow
 // against the actual generated API (verified by generating real bindings
 // and reading their signatures, not guessed).
@@ -7,9 +7,9 @@
 // Every MobileClient call is a blocking network request - always invoke
 // from a coroutine on Dispatchers.IO, never on the main thread.
 
-package com.example.ipcheck.example
+package com.example.fwupdater.example
 
-import com.example.ipcheck.*
+import com.example.fwupdater.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

@@ -2,15 +2,15 @@ mod display;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use ipcheck_core::planner::{plan_add_rules, PortSpec, DEFAULT_IPV6_PREFIX_LEN, DEFAULT_PORTS};
-use ipcheck_core::vultr::{requests, FirewallRuleResponse, VultrClient};
-use ipcheck_core::{detect_all, DetectedIps};
+use fwupdater_core::planner::{plan_add_rules, PortSpec, DEFAULT_IPV6_PREFIX_LEN, DEFAULT_PORTS};
+use fwupdater_core::vultr::{requests, FirewallRuleResponse, VultrClient};
+use fwupdater_core::{detect_all, DetectedIps};
 
 /// Command-line tool for communicating Vultr firewall API calls
 /// Every mutating command prints the request (and an equivalent 
 /// curl command) and asks for confirmation before sending it
 #[derive(Parser)]
-#[command(name = "ipcheck", version, about)]
+#[command(name = "fwupdater", version, about)]
 struct Cli {
     /// Vultr API key. Can also be set via VULTR_API_KEY.
     #[arg(long, env = "VULTR_API_KEY", global = true)]
@@ -237,7 +237,7 @@ fn resolve_group_id(client: &VultrClient, cli: &Cli, group_description: &str) ->
 
     match matches.as_slice() {
         [] => bail!(
-            "no firewall group found with description '{group_description}'; run `ipcheck groups` to see available descriptions"
+            "no firewall group found with description '{group_description}'; run `fwupdater groups` to see available descriptions"
         ),
         [group] => {
             println!("Found group id={} description={}", group.id, group.description);

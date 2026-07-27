@@ -1,6 +1,6 @@
-# ipcheck-mobile
+# fwupdater-mobile
 
-UniFFI bindings exposing `ipcheck-core` to Kotlin (Android) and Swift (iOS),
+UniFFI bindings exposing `fwupdater-core` to Kotlin (Android) and Swift (iOS),
 mirroring the CLI's workflow:
 
 ```
@@ -56,14 +56,14 @@ for a full call sequence, written against the actual generated bindings.
    module. iOS: add the generated `.xcframework` and Swift source to your
    Xcode project (or a local Swift Package).
 
-Rename the placeholder Kotlin package (`com.example.ipcheck`) in
+Rename the placeholder Kotlin package (`com.example.fwupdater`) in
 `uniffi.toml` to match your app before generating bindings for real use.
 
 ## What's been verified vs. not
 
 Verified in this repo's dev environment (no Android/iOS toolchain
 available here):
-- `cargo build -p ipcheck-mobile` / `cargo test` / `cargo clippy` all pass.
+- `cargo build -p fwupdater-mobile` / `cargo test` / `cargo clippy` all pass.
 - `uniffi-bindgen` was actually run (`--language kotlin` and `--language
   swift`, against a native Linux build) and produced real, inspected
   binding source - the example usage files above were written by reading
