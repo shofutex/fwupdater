@@ -1,0 +1,7 @@
+[bindings.kotlin]
+# Rename to match your Android app's actual package.
+package_name = "com.example.ipcheck"
+cdylib_name = "ipcheck_mobile"
+
+[bindings.swift]
+module_name = "Ipcheck"

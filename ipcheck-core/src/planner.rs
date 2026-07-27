@@ -1,7 +1,7 @@
 use std::net::Ipv6Addr;
 
 use crate::ip_detect::DetectedIps;
-use crate::vultr::models::{FirewallRuleReq, IpType, Protocol};
+use crate::vultr::models::{FirewallRule, FirewallRuleReq, IpType, Protocol};
 
 /// Ports commonly opened for a management IP: SSH, HTTP, HTTPS.
 pub const DEFAULT_PORTS: [u16; 3] = [22, 80, 443];
@@ -77,7 +77,72 @@ pub fn plan_add_rules(
 
 /// Masks off the host bits of `addr`, leaving only the `prefix_len`-bit
 /// network prefix.
-fn ipv6_network_prefix(addr: Ipv6Addr, prefix_len: u8) -> Ipv6Addr {
+pub fn ipv6_network_prefix(addr: Ipv6Addr, prefix_len: u8) -> Ipv6Addr {
     let mask = if prefix_len >= 128 { u128::MAX } else { !0u128 << (128 - prefix_len as u32) };
     Ipv6Addr::from_bits(addr.to_bits() & mask)
+}
+
+/// Finds rules tagged with `notes` whose subnet no longer matches either of
+/// `ips`' currently-detected addresses (v4 as a /32, v6 as the
+/// `ipv6_prefix_len`-bit network prefix — mirroring [`plan_add_rules`]).
+/// These are the rules a caller should offer to delete: they were created
+/// for an IP address this machine no longer has.
+pub fn find_stale_rules(
+    rules: &[FirewallRule],
+    ips: &DetectedIps,
+    notes: &str,
+    ipv6_prefix_len: u8,
+) -> Vec<FirewallRule> {
+    let current_v4 = ips.ipv4.map(|v4| format!("{v4}/32"));
+    let current_v6 = ips
+        .ipv6
+        .map(|v6| format!("{}/{}", ipv6_network_prefix(v6, ipv6_prefix_len), ipv6_prefix_len));
+
+    rules
+        .iter()
+        .filter(|r| r.notes == notes)
+        .filter(|r| {
+            let subnet = format!("{}/{}", r.subnet, r.subnet_size);
+            Some(&subnet) != current_v4.as_ref() && Some(&subnet) != current_v6.as_ref()
+        })
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    fn rule(id: u64, ip_type: IpType, subnet: &str, subnet_size: i64, notes: &str) -> FirewallRule {
+        FirewallRule {
+            id,
+            action: "accept".to_string(),
+            ip_type,
+            protocol: Protocol::Tcp,
+            port: "22".to_string(),
+            subnet: subnet.to_string(),
+            subnet_size,
+            source: String::new(),
+            notes: notes.to_string(),
+        }
+    }
+
+    #[test]
+    fn find_stale_rules_keeps_current_ignores_other_notes_flags_the_rest() {
+        let ips = DetectedIps {
+            ipv4: Some(Ipv4Addr::new(1, 2, 3, 4)),
+            ipv6: Some("2607:fb91:4b0c:c2d4::1".parse().unwrap()),
+        };
+
+        let current_v4 = rule(1, IpType::V4, "1.2.3.4", 32, "framework");
+        let current_v6 = rule(2, IpType::V6, "2607:fb91:4b0c:c2d4::", 64, "framework");
+        let stale_v4 = rule(3, IpType::V4, "9.9.9.9", 32, "framework");
+        let other_notes = rule(4, IpType::V4, "9.9.9.9", 32, "manual-rule");
+
+        let rules = vec![current_v4, current_v6, stale_v4.clone(), other_notes];
+        let stale = find_stale_rules(&rules, &ips, "framework", 64);
+
+        assert_eq!(stale, vec![stale_v4]);
+    }
 }
