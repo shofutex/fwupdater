@@ -1,10 +1,14 @@
 mod display;
 
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use fwupdater_core::planner::{plan_add_rules, PortSpec, DEFAULT_IPV6_PREFIX_LEN, DEFAULT_PORTS};
+use fwupdater_core::planner::{
+    plan_add_rules, PortSpec, DEFAULT_IPV4_PREFIX_LEN, DEFAULT_IPV6_PREFIX_LEN, DEFAULT_PORTS,
+};
 use fwupdater_core::vultr::{requests, FirewallRuleResponse, VultrClient};
-use fwupdater_core::{detect_all, DetectedIps};
+use fwupdater_core::{detect_all, detect_ipv4, detect_ipv6, DetectedIps};
 
 /// Command-line tool for communicating Vultr firewall API calls
 /// Every mutating command prints the request (and an equivalent 
@@ -59,6 +63,18 @@ enum Command {
         /// Note/label to attach to each created rule.
         #[arg(long)]
         note: String,
+        /// Use this IPv4 address instead of auto-detecting this machine's
+        /// public address.
+        #[arg(long)]
+        ipv4: Option<Ipv4Addr>,
+        /// Use this IPv6 address instead of auto-detecting this machine's
+        /// public address.
+        #[arg(long)]
+        ipv6: Option<Ipv6Addr>,
+        /// IPv4 network prefix length to open (rather than a single /32
+        /// host). Only useful alongside --ipv4, to open a whole subnet.
+        #[arg(long, default_value_t = DEFAULT_IPV4_PREFIX_LEN)]
+        ipv4_prefix_len: u8,
         /// IPv6 network prefix length to open (rather than a single /128
         /// host), since the host portion commonly rotates via privacy
         /// extensions while the prefix stays stable.
@@ -115,6 +131,9 @@ fn main() -> Result<()> {
             group_description,
             ports,
             note,
+            ipv4,
+            ipv6,
+            ipv4_prefix_len,
             ipv6_prefix_len,
             ipv4_only,
             ipv6_only,
@@ -126,6 +145,9 @@ fn main() -> Result<()> {
             group_description.as_deref(),
             ports,
             note,
+            *ipv4,
+            *ipv6,
+            *ipv4_prefix_len,
             *ipv6_prefix_len,
             *ipv4_only,
             *ipv6_only,
@@ -264,6 +286,9 @@ fn cmd_add(
     group_description: Option<&str>,
     ports: &[u16],
     note: &str,
+    ipv4: Option<Ipv4Addr>,
+    ipv6: Option<Ipv6Addr>,
+    ipv4_prefix_len: u8,
     ipv6_prefix_len: u8,
     ipv4_only: bool,
     ipv6_only: bool,
@@ -273,13 +298,22 @@ fn cmd_add(
     let client = client_for(cli)?;
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
-    println!("Detecting public IP address(es)...");
-    let mut ips = detect_all();
-    if ipv4_only {
-        ips.ipv6 = None;
-    }
+    let mut ips = DetectedIps::default();
     if ipv6_only {
-        ips.ipv4 = None;
+        // skip ipv4 entirely
+    } else if let Some(addr) = ipv4 {
+        ips.ipv4 = Some(addr);
+    } else {
+        println!("Detecting public IPv4 address...");
+        ips.ipv4 = detect_ipv4().ok();
+    }
+    if ipv4_only {
+        // skip ipv6 entirely
+    } else if let Some(addr) = ipv6 {
+        ips.ipv6 = Some(addr);
+    } else {
+        println!("Detecting public IPv6 address...");
+        ips.ipv6 = detect_ipv6().ok().flatten();
     }
     print_detected(&ips);
 
@@ -288,7 +322,7 @@ fn cmd_add(
     }
 
     let port_specs: Vec<PortSpec> = ports.iter().copied().map(PortSpec::tcp).collect();
-    let planned_rules = plan_add_rules(&ips, &port_specs, note, ipv6_prefix_len);
+    let planned_rules = plan_add_rules(&ips, &port_specs, note, ipv4_prefix_len, ipv6_prefix_len);
     let api_requests: Vec<_> = planned_rules
         .iter()
         .map(|rule| requests::create_firewall_rule(&resolved_group_id, rule))

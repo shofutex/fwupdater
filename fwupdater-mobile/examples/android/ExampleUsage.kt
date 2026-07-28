@@ -44,6 +44,7 @@ class FirewallUpdateWorkflow(apiKey: String) : AutoCloseable {
             ips = ips,
             ports = ports,
             note = note,
+            ipv4PrefixLen = defaultIpv4PrefixLen(),
             ipv6PrefixLen = defaultIpv6PrefixLen(),
             ipv4Only = false,
             ipv6Only = false,

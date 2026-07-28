@@ -290,6 +290,13 @@ pub fn default_ipv6_prefix_len() -> u8 {
     planner::DEFAULT_IPV6_PREFIX_LEN
 }
 
+/// Default IPv4 network prefix length used for generated rules (32, i.e. a
+/// single host).
+#[uniffi::export]
+pub fn default_ipv4_prefix_len() -> u8 {
+    planner::DEFAULT_IPV4_PREFIX_LEN
+}
+
 /// Builds the list of rules that *would* be created for `ports` at the
 /// given `ips`, tagged with `note` - pure, no network access. Show this to
 /// the user for confirmation before calling `MobileClient::add_rules` with
@@ -300,6 +307,7 @@ pub fn plan_add_rules(
     ips: DetectedIps,
     ports: Vec<u16>,
     note: String,
+    ipv4_prefix_len: u8,
     ipv6_prefix_len: u8,
     ipv4_only: bool,
     ipv6_only: bool,
@@ -312,7 +320,7 @@ pub fn plan_add_rules(
         core_ips.ipv4 = None;
     }
     let specs: Vec<PortSpec> = ports.into_iter().map(PortSpec::tcp).collect();
-    let planned = planner::plan_add_rules(&core_ips, &specs, &note, ipv6_prefix_len);
+    let planned = planner::plan_add_rules(&core_ips, &specs, &note, ipv4_prefix_len, ipv6_prefix_len);
     Ok(planned.into_iter().map(Into::into).collect())
 }
 

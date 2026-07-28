@@ -23,11 +23,11 @@ main/UI thread, exactly like any blocking network SDK
   "resolve by description" call like the CLI has - on mobile, a picker list
   *is* the description-lookup UI).
 - `client.listRules(groupId)` - existing rules in a group.
-- `planAddRules(ips, ports, note, ipv6PrefixLen, ipv4Only, ipv6Only)` - pure,
-  no network; builds the rules that *would* be created, for a confirmation
-  screen (mirrors the CLI's print-before-send step). `defaultPorts()`
-  (22/80/443) and `defaultIpv6PrefixLen()` (64) give the same defaults the
-  CLI uses.
+- `planAddRules(ips, ports, note, ipv4PrefixLen, ipv6PrefixLen, ipv4Only, ipv6Only)` -
+  pure, no network; builds the rules that *would* be created, for a
+  confirmation screen (mirrors the CLI's print-before-send step).
+  `defaultPorts()` (22/80/443), `defaultIpv4PrefixLen()` (32), and
+  `defaultIpv6PrefixLen()` (64) give the same defaults the CLI uses.
 - `client.addRules(groupId, planned)` - sends the (user-confirmed) planned
   rules; returns one `AddRuleResult` per rule so a single failure doesn't
   hide the others that succeeded.
