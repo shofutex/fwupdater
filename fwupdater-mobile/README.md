@@ -46,8 +46,12 @@ for a full call sequence, written against the actual generated bindings.
    (needs the Android NDK + `cargo-ndk`) or `scripts/build-ios.sh` (macOS +
    Xcode only). Both also invoke step 2 for you.
 2. **Generate bindings** - `cargo run --bin uniffi-bindgen --features
-   uniffi/cli -- generate --config uniffi.toml --library <path-to-lib>
-   --language kotlin|swift --out-dir <dir>`. This step doesn't need a
+   uniffi/cli -- generate --library <path-to-lib> --language kotlin|swift
+   --out-dir <dir>`. `uniffi.toml` is picked up automatically since it sits
+   next to this crate's `Cargo.toml` - no `--config` flag needed (uniffi
+   0.32 repurposed `--config` for a different, global-config-file format;
+   passing our per-crate file to it now just prints a warning and is
+   ignored, while auto-discovery still applies it). This step doesn't need a
    mobile toolchain: it reads metadata embedded in the compiled library by
    the `uniffi::export` macros, so it can run against a native build on any
    OS - only the *cross-compiling* in step 1 needs the real toolchains.

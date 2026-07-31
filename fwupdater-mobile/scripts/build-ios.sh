@@ -21,9 +21,11 @@ cargo build --release --manifest-path "${crate_dir}/Cargo.toml" --target aarch64
 echo "Generating Swift bindings..."
 bindings_dir="${out_dir}/bindings"
 mkdir -p "$bindings_dir"
+# uniffi.toml is picked up automatically since it sits next to Cargo.toml in
+# the crate this library was built from; no --config flag needed (uniffi
+# 0.32+ repurposed --config for a different, global-config-file format).
 cargo run --manifest-path "${crate_dir}/Cargo.toml" --bin uniffi-bindgen --features uniffi/cli -- \
-    generate --config "${crate_dir}/uniffi.toml" \
-    --library "${crate_dir}/../target/aarch64-apple-ios/release/${lib_name}" \
+    generate --library "${crate_dir}/../target/aarch64-apple-ios/release/${lib_name}" \
     --language swift --out-dir "$bindings_dir"
 
 # uniffi names the header/modulemap after the configured Swift module name.

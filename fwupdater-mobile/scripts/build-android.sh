@@ -27,8 +27,11 @@ cargo ndk \
 
 echo "Generating Kotlin bindings..."
 lib="${out_dir}/jniLibs/arm64-v8a/libfwupdater_mobile.so"
+# uniffi.toml is picked up automatically since it sits next to Cargo.toml in
+# the crate this library was built from; no --config flag needed (uniffi
+# 0.32+ repurposed --config for a different, global-config-file format).
 cargo run --manifest-path "${crate_dir}/Cargo.toml" --bin uniffi-bindgen --features uniffi/cli -- \
-    generate --config "${crate_dir}/uniffi.toml" --library "$lib" --language kotlin \
+    generate --library "$lib" --language kotlin \
     --out-dir "${out_dir}/kotlin"
 
 echo "Done. jniLibs: ${out_dir}/jniLibs, Kotlin sources: ${out_dir}/kotlin"
