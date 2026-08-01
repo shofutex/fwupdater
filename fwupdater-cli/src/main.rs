@@ -24,9 +24,9 @@ struct Cli {
     #[arg(long, default_value = VultrClient::DEFAULT_BASE_URL, global = true)]
     base_url: String,
 
-    /// Don't print the request (JSON body + equivalent curl) before sending it.
-    #[arg(short = 's', long, global = true)]
-    silent: bool,
+    /// Print the request (JSON body + equivalent curl command) before sending it.
+    #[arg(short = 'c', long, global = true)]
+    curl: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -45,10 +45,10 @@ enum Command {
         /// Look up the group by its description (from `groups`) instead of
         /// its ID. Resolves to a group ID and pauses for confirmation
         /// before listing its rules.
-        #[arg(long, conflicts_with = "group_id")]
+        #[arg(short = 'g', long, conflicts_with = "group_id")]
         group_description: Option<String>,
         /// Only show rules whose notes field exactly matches this value.
-        #[arg(long)]
+        #[arg(short = 'n', long)]
         notes: Option<String>,
     },
     /// Add rules for the given ports at this machine's current IP address(es).
@@ -58,7 +58,7 @@ enum Command {
         /// Look up the group by its description (from `groups`) instead of
         /// its ID. Resolves to a group ID and pauses for confirmation
         /// before creating any rules.
-        #[arg(long, conflicts_with = "group_id")]
+        #[arg(short = 'g', long, conflicts_with = "group_id")]
         group_description: Option<String>,
         /// Comma-separated TCP ports to open.
         #[arg(long, value_delimiter = ',', default_values_t = DEFAULT_PORTS)]
@@ -106,14 +106,14 @@ enum Command {
         /// Look up the group by its description (from `groups`) instead of
         /// its ID. Resolves to a group ID and pauses for confirmation
         /// before deleting any rules.
-        #[arg(long)]
+        #[arg(short = 'g', long)]
         group_description: Option<String>,
         /// Rule IDs to delete explicitly (see `rules` for IDs). Can be
         /// combined with --notes; at least one of the two is required.
         rule_ids: Vec<u64>,
         /// Also delete every rule in the group whose notes field exactly
         /// matches this value.
-        #[arg(long)]
+        #[arg(short = 'n', long)]
         notes: Option<String>,
         /// Only print the requests that would be sent; never contact Vultr.
         #[arg(long)]
@@ -200,7 +200,7 @@ fn cmd_detect() -> Result<()> {
 fn cmd_groups(cli: &Cli) -> Result<()> {
     let client = client_for(cli)?;
     let req = requests::list_firewall_groups();
-    if !cli.silent {
+    if cli.curl {
         display::print_request(&req, &cli.base_url);
     }
 
@@ -224,7 +224,7 @@ fn cmd_rules(
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
     let req = requests::list_firewall_rules(&resolved_group_id);
-    if !cli.silent {
+    if cli.curl {
         display::print_request(&req, &cli.base_url);
     }
 
@@ -265,7 +265,7 @@ fn resolve_group(
 /// pair before handing the ID back to the caller.
 fn resolve_group_id(client: &VultrClient, cli: &Cli, group_description: &str) -> Result<String> {
     let req = requests::list_firewall_groups();
-    if !cli.silent {
+    if cli.curl {
         display::print_request(&req, &cli.base_url);
     }
 
@@ -345,7 +345,7 @@ fn cmd_add(
         .collect();
 
     println!("\n{} rule(s) would be created:\n", api_requests.len());
-    if !cli.silent {
+    if cli.curl {
         for req in &api_requests {
             display::print_request(req, &cli.base_url);
         }
@@ -388,7 +388,7 @@ fn cmd_remove(
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
     let list_req = requests::list_firewall_rules(&resolved_group_id);
-    if !cli.silent {
+    if cli.curl {
         display::print_request(&list_req, &cli.base_url);
     }
     let existing_rules = client.list_firewall_rules(&resolved_group_id)?;
@@ -423,7 +423,7 @@ fn cmd_remove(
         .map(|id| requests::delete_firewall_rule(&resolved_group_id, *id))
         .collect();
 
-    if !cli.silent {
+    if cli.curl {
         for req in &api_requests {
             display::print_request(req, &cli.base_url);
         }

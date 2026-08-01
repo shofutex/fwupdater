@@ -73,7 +73,7 @@ NO_MATCH="__no-ipv6__" # sentinel so an empty mysubnet6 never accidentally match
 
 # Global flags applied to every fwupdater invocation.
 common_flags=()
-[[ "$verbose" -eq 0 ]] && common_flags+=(-s)
+[[ "$verbose" -eq 1 ]] && common_flags+=(-c)
 
 # Flags applied only to mutating subcommands (add/remove).
 mutate_flags=()
