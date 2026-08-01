@@ -366,12 +366,28 @@ fn cmd_remove(
     let client = client_for(cli)?;
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
+    let list_req = requests::list_firewall_rules(&resolved_group_id);
+    if !cli.silent {
+        display::print_request(&list_req, &cli.base_url);
+    }
+    let existing_rules = client.list_firewall_rules(&resolved_group_id)?;
+
+    println!("{} rule(s) would be deleted:\n", rule_ids.len());
+    for id in rule_ids {
+        match existing_rules.iter().find(|r| r.id == *id) {
+            Some(rule) => display::print_rule(rule),
+            None => println!(
+                "id={id:<8} (not found in group {resolved_group_id}; may already be deleted)"
+            ),
+        }
+    }
+    println!();
+
     let api_requests: Vec<_> = rule_ids
         .iter()
         .map(|id| requests::delete_firewall_rule(&resolved_group_id, *id))
         .collect();
 
-    println!("{} rule(s) would be deleted:\n", api_requests.len());
     if !cli.silent {
         for req in &api_requests {
             display::print_request(req, &cli.base_url);
