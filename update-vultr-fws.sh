@@ -125,25 +125,44 @@ for fw_id in "${firewall_ids[@]}"; do
     rules_output=$(run_fwupdater rules "$fw_id")
     framework_lines=$(grep 'notes=framework$' <<<"$rules_output" || true)
 
-    has_current_rule=0
+    have_v4=0
+    have_v6=0
     extra_rule_ids=()
     if [[ -n "$framework_lines" ]]; then
         while IFS= read -r line; do
             subnet=$(grep -oP 'subnet=\K\S+' <<<"$line")
             id=$(grep -oP 'id=\K[0-9]+' <<<"$line")
-            if [[ "$subnet" == "${myipv4}/32" ]] \
-                || { [[ "$mysubnet6" != "$NO_MATCH" ]] && [[ "$subnet" == "${mysubnet6}/64" ]]; }; then
-                has_current_rule=1
+            if [[ "$subnet" == "${myipv4}/32" ]]; then
+                have_v4=1
+            elif [[ "$mysubnet6" != "$NO_MATCH" ]] && [[ "$subnet" == "${mysubnet6}/64" ]]; then
+                have_v6=1
             else
                 extra_rule_ids+=("$id")
             fi
         done <<<"$framework_lines"
     fi
 
-    if [[ "$has_current_rule" -eq 0 ]]; then
-        echo "[$fw_id] rules missing for current IP (${myipv4}${myipv6:+, $myipv6})"
+    # Track v4/v6 independently: an existing rule for one family must not
+    # suppress creating the missing rule for the other. IPv6 is only "needed"
+    # when this machine actually has one.
+    need_v4=$(( have_v4 == 0 ? 1 : 0 ))
+    need_v6=0
+    [[ "$have_v6" -eq 0 && "$mysubnet6" != "$NO_MATCH" ]] && need_v6=1
+
+    if [[ "$need_v4" -eq 1 && "$need_v6" -eq 1 ]]; then
+        echo "[$fw_id] rules missing for current IP (${myipv4}, ${myipv6})"
         attempted=1
         run_mutation add "$fw_id" --ports 22,443 --note framework "${mutate_flags[@]}"
+        [[ "$mutate_changed" -eq 1 ]] && changed=1
+    elif [[ "$need_v4" -eq 1 ]]; then
+        echo "[$fw_id] IPv4 rule missing for current IP (${myipv4})"
+        attempted=1
+        run_mutation add "$fw_id" --ports 22,443 --note framework --ipv4-only "${mutate_flags[@]}"
+        [[ "$mutate_changed" -eq 1 ]] && changed=1
+    elif [[ "$need_v6" -eq 1 ]]; then
+        echo "[$fw_id] IPv6 rule missing for current IP (${myipv6})"
+        attempted=1
+        run_mutation add "$fw_id" --ports 22,443 --note framework --ipv6-only "${mutate_flags[@]}"
         [[ "$mutate_changed" -eq 1 ]] && changed=1
     fi
 
