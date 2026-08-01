@@ -47,6 +47,9 @@ enum Command {
         /// before listing its rules.
         #[arg(long, conflicts_with = "group_id")]
         group_description: Option<String>,
+        /// Only show rules whose notes field exactly matches this value.
+        #[arg(long)]
+        notes: Option<String>,
     },
     /// Add rules for the given ports at this machine's current IP address(es).
     Add {
@@ -91,7 +94,7 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Remove one or more existing rules by ID (see `rules` for IDs).
+    /// Remove existing rules by ID and/or by notes value (see `rules` for both).
     ///
     /// The group is selected with --group-id or --group-description (rather
     /// than a positional GROUP_ID like `add`/`rules` use) since a positional
@@ -105,9 +108,13 @@ enum Command {
         /// before deleting any rules.
         #[arg(long)]
         group_description: Option<String>,
-        /// Rule IDs to delete (see `rules` for IDs); at least one is required.
-        #[arg(required = true)]
+        /// Rule IDs to delete explicitly (see `rules` for IDs). Can be
+        /// combined with --notes; at least one of the two is required.
         rule_ids: Vec<u64>,
+        /// Also delete every rule in the group whose notes field exactly
+        /// matches this value.
+        #[arg(long)]
+        notes: Option<String>,
         /// Only print the requests that would be sent; never contact Vultr.
         #[arg(long)]
         dry_run: bool,
@@ -123,8 +130,8 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Detect => cmd_detect(),
         Command::Groups => cmd_groups(&cli),
-        Command::Rules { group_id, group_description } => {
-            cmd_rules(&cli, group_id.as_deref(), group_description.as_deref())
+        Command::Rules { group_id, group_description, notes } => {
+            cmd_rules(&cli, group_id.as_deref(), group_description.as_deref(), notes.as_deref())
         }
         Command::Add {
             group_id,
@@ -154,11 +161,12 @@ fn main() -> Result<()> {
             *dry_run,
             *yes,
         ),
-        Command::Remove { group_id, group_description, rule_ids, dry_run, yes } => cmd_remove(
+        Command::Remove { group_id, group_description, rule_ids, notes, dry_run, yes } => cmd_remove(
             &cli,
             group_id.as_deref(),
             group_description.as_deref(),
             rule_ids,
+            notes.as_deref(),
             *dry_run,
             *yes,
         ),
@@ -206,7 +214,12 @@ fn cmd_groups(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn cmd_rules(cli: &Cli, group_id: Option<&str>, group_description: Option<&str>) -> Result<()> {
+fn cmd_rules(
+    cli: &Cli,
+    group_id: Option<&str>,
+    group_description: Option<&str>,
+    notes: Option<&str>,
+) -> Result<()> {
     let client = client_for(cli)?;
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
@@ -215,7 +228,10 @@ fn cmd_rules(cli: &Cli, group_id: Option<&str>, group_description: Option<&str>)
         display::print_request(&req, &cli.base_url);
     }
 
-    let rules = client.list_firewall_rules(&resolved_group_id)?;
+    let mut rules = client.list_firewall_rules(&resolved_group_id)?;
+    if let Some(notes) = notes {
+        rules.retain(|r| r.notes == notes);
+    }
     if rules.is_empty() {
         println!("No rules found in group {resolved_group_id}.");
     }
@@ -360,9 +376,14 @@ fn cmd_remove(
     group_id: Option<&str>,
     group_description: Option<&str>,
     rule_ids: &[u64],
+    notes: Option<&str>,
     dry_run: bool,
     yes: bool,
 ) -> Result<()> {
+    if rule_ids.is_empty() && notes.is_none() {
+        bail!("nothing to remove: pass one or more rule IDs and/or --notes");
+    }
+
     let client = client_for(cli)?;
     let resolved_group_id = resolve_group(&client, cli, group_id, group_description)?;
 
@@ -372,8 +393,22 @@ fn cmd_remove(
     }
     let existing_rules = client.list_firewall_rules(&resolved_group_id)?;
 
-    println!("{} rule(s) would be deleted:\n", rule_ids.len());
-    for id in rule_ids {
+    let mut target_ids: Vec<u64> = rule_ids.to_vec();
+    if let Some(notes) = notes {
+        for r in existing_rules.iter().filter(|r| r.notes == notes) {
+            if !target_ids.contains(&r.id) {
+                target_ids.push(r.id);
+            }
+        }
+    }
+
+    if target_ids.is_empty() {
+        println!("No rules matched; nothing to remove.");
+        return Ok(());
+    }
+
+    println!("{} rule(s) would be deleted:\n", target_ids.len());
+    for id in &target_ids {
         match existing_rules.iter().find(|r| r.id == *id) {
             Some(rule) => display::print_rule(rule),
             None => println!(
@@ -383,7 +418,7 @@ fn cmd_remove(
     }
     println!();
 
-    let api_requests: Vec<_> = rule_ids
+    let api_requests: Vec<_> = target_ids
         .iter()
         .map(|id| requests::delete_firewall_rule(&resolved_group_id, *id))
         .collect();
@@ -405,7 +440,7 @@ fn cmd_remove(
         return Ok(());
     }
 
-    for (id, req) in rule_ids.iter().zip(&api_requests) {
+    for (id, req) in target_ids.iter().zip(&api_requests) {
         match client.send_no_content(req) {
             Ok(()) => println!("Deleted rule id={id}"),
             Err(e) => println!("Failed to delete rule id={id}: {e}"),
