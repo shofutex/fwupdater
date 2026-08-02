@@ -152,17 +152,17 @@ for fw_id in "${firewall_ids[@]}"; do
     if [[ "$need_v4" -eq 1 && "$need_v6" -eq 1 ]]; then
         echo "[$fw_id] rules missing for current IP (${myipv4}, ${myipv6})"
         attempted=1
-        run_mutation add "$fw_id" --ports 22,443 --note framework "${mutate_flags[@]}"
+        run_mutation add "$fw_id" --ports 22,443 --notes framework "${mutate_flags[@]}"
         [[ "$mutate_changed" -eq 1 ]] && changed=1
     elif [[ "$need_v4" -eq 1 ]]; then
         echo "[$fw_id] IPv4 rule missing for current IP (${myipv4})"
         attempted=1
-        run_mutation add "$fw_id" --ports 22,443 --note framework --ipv4-only "${mutate_flags[@]}"
+        run_mutation add "$fw_id" --ports 22,443 --notes framework --ipv4-only "${mutate_flags[@]}"
         [[ "$mutate_changed" -eq 1 ]] && changed=1
     elif [[ "$need_v6" -eq 1 ]]; then
         echo "[$fw_id] IPv6 rule missing for current IP (${myipv6})"
         attempted=1
-        run_mutation add "$fw_id" --ports 22,443 --note framework --ipv6-only "${mutate_flags[@]}"
+        run_mutation add "$fw_id" --ports 22,443 --notes framework --ipv6-only "${mutate_flags[@]}"
         [[ "$mutate_changed" -eq 1 ]] && changed=1
     fi
 

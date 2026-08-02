@@ -64,8 +64,8 @@ enum Command {
         #[arg(long, value_delimiter = ',', default_values_t = DEFAULT_PORTS)]
         ports: Vec<u16>,
         /// Note/label to attach to each created rule.
-        #[arg(long)]
-        note: String,
+        #[arg(short = 'n', long)]
+        notes: String,
         /// Use this IPv4 address instead of auto-detecting this machine's
         /// public address.
         #[arg(long)]
@@ -137,7 +137,7 @@ fn main() -> Result<()> {
             group_id,
             group_description,
             ports,
-            note,
+            notes,
             ipv4,
             ipv6,
             ipv4_prefix_len,
@@ -151,7 +151,7 @@ fn main() -> Result<()> {
             group_id.as_deref(),
             group_description.as_deref(),
             ports,
-            note,
+            notes,
             *ipv4,
             *ipv6,
             *ipv4_prefix_len,
@@ -171,6 +171,21 @@ fn main() -> Result<()> {
             *yes,
         ),
     }
+}
+
+/// Compares notes values for `--notes` filtering, treating curly/typographic
+/// apostrophe variants (as commonly auto-substituted by phone/OS keyboards
+/// and some editors) as equivalent to a straight `'`.
+fn notes_match(a: &str, b: &str) -> bool {
+    fn normalize(s: &str) -> String {
+        s.chars()
+            .map(|c| match c {
+                '\u{2018}' | '\u{2019}' | '\u{02BC}' => '\'',
+                other => other,
+            })
+            .collect()
+    }
+    normalize(a) == normalize(b)
 }
 
 fn client_for(cli: &Cli) -> Result<VultrClient> {
@@ -230,7 +245,7 @@ fn cmd_rules(
 
     let mut rules = client.list_firewall_rules(&resolved_group_id)?;
     if let Some(notes) = notes {
-        rules.retain(|r| r.notes == notes);
+        rules.retain(|r| notes_match(&r.notes, notes));
     }
     if rules.is_empty() {
         println!("No rules found in group {resolved_group_id}.");
@@ -301,7 +316,7 @@ fn cmd_add(
     group_id: Option<&str>,
     group_description: Option<&str>,
     ports: &[u16],
-    note: &str,
+    notes: &str,
     ipv4: Option<Ipv4Addr>,
     ipv6: Option<Ipv6Addr>,
     ipv4_prefix_len: u8,
@@ -338,7 +353,7 @@ fn cmd_add(
     }
 
     let port_specs: Vec<PortSpec> = ports.iter().copied().map(PortSpec::tcp).collect();
-    let planned_rules = plan_add_rules(&ips, &port_specs, note, ipv4_prefix_len, ipv6_prefix_len);
+    let planned_rules = plan_add_rules(&ips, &port_specs, notes, ipv4_prefix_len, ipv6_prefix_len);
     let api_requests: Vec<_> = planned_rules
         .iter()
         .map(|rule| requests::create_firewall_rule(&resolved_group_id, rule))
@@ -395,7 +410,7 @@ fn cmd_remove(
 
     let mut target_ids: Vec<u64> = rule_ids.to_vec();
     if let Some(notes) = notes {
-        for r in existing_rules.iter().filter(|r| r.notes == notes) {
+        for r in existing_rules.iter().filter(|r| notes_match(&r.notes, notes)) {
             if !target_ids.contains(&r.id) {
                 target_ids.push(r.id);
             }
